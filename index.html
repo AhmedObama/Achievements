@@ -2030,6 +2030,12 @@
                       Import Xbox PC
                     </button>
                   </div>
+                  <div class="settings-control" style="gap: 8px; margin-top: 8px">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                      <input type="checkbox" id="settings-xboxPcSkipConsoleDuplicates" checked />
+                      <span>Skip titles already imported in Xbox Console</span>
+                    </label>
+                  </div>
                   <div
                     id="settings-xboxPcHint"
                     data-i18n="settings.xboxPc.hint"
@@ -2041,6 +2047,50 @@
                     your Microsoft password is never stored. This direct Xbox
                     OAuth route is experimental and can be restricted by
                     Microsoft.
+                  </div>
+                </div>
+                <hr style="margin: 18px 0 14px" />
+                <div class="settings-section" style="margin-bottom: 5px">
+                  <h4 id="settings-xboxConsoleTitle">
+                    Xbox Console (Microsoft / Xbox Network)
+                  </h4>
+                  <div
+                    id="settings-xboxConsoleStatus"
+                    class="hint"
+                    style="margin-top: 6px"
+                  >
+                    Not connected.
+                  </div>
+                  <div class="settings-control" style="gap: 8px">
+                    <button
+                      type="button"
+                      id="settings-xboxConsoleImportBtn"
+                      disabled
+                    >
+                      Import Xbox Console
+                    </button>
+                  </div>
+                  <div class="settings-control" style="gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+                    <label for="settings-xboxConsoleFilterSelect" class="hint" style="margin: 0; font-size: 12px;">Platform Filter:</label>
+                    <select id="settings-xboxConsoleFilterSelect" style="padding: 4px 8px; font-size: 12px; border-radius: 4px; background: var(--bg-card, #2b2b2b); color: inherit; border: 1px solid var(--border-color, #444);">
+                      <option value="all">All Consoles (Xbox 360, One, Series)</option>
+                      <option value="modern">Xbox One & Series X|S</option>
+                      <option value="xbox360">Xbox 360 Only</option>
+                    </select>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                      <input type="checkbox" id="settings-xboxConsoleSkipPcDuplicates" checked />
+                      <span>Skip titles already imported in Xbox PC</span>
+                    </label>
+                  </div>
+                  <div
+                    id="settings-xboxConsoleHint"
+                    class="hint"
+                    style="margin-top: 6px; margin-bottom: 30px"
+                  >
+                    Imports achievements for all Xbox console titles (Xbox 360,
+                    Xbox One, Series X|S) from your Xbox Network history. Uses
+                    the same Microsoft account connected above — no additional
+                    sign-in required.
                   </div>
                 </div>
                 <hr style="margin: 18px 0 14px" />
@@ -3930,6 +3980,29 @@
 
               <div class="settings-section">
                 <details class="platform-guide-item">
+                  <summary id="platformGuideXboxConsoleSummary">
+                    Xbox Console (Microsoft / Xbox Network)
+                  </summary>
+                  <ul class="platform-guide-list">
+                    <li id="platformGuideXboxConsoleItem1">
+                      Connect your Microsoft account using
+                      <strong>Connect Xbox</strong> in the Xbox PC section
+                      above, then click <strong>Import Xbox Console</strong>.
+                    </li>
+                    <li id="platformGuideXboxConsoleItem2">
+                      Imports all Xbox 360, Xbox One, and Xbox Series X|S titles
+                      from your Xbox Network play history regardless of device.
+                    </li>
+                    <li id="platformGuideXboxConsoleItem3">
+                      Achievement snapshots are synced on-demand when you select
+                      a config. No local game installation is required.
+                    </li>
+                  </ul>
+                </details>
+              </div>
+
+              <div class="settings-section">
+                <details class="platform-guide-item">
                   <summary id="platformGuideRetroAchievementsSummary">
                     RetroAchievements
                   </summary>
@@ -5020,6 +5093,9 @@
                           </option>
                           <option value="xbox-pc" disabled>
                             Xbox PC (Microsoft / Xbox Network)
+                          </option>
+                          <option value="xbox-console" disabled>
+                            Xbox Console (Microsoft / Xbox Network)
                           </option>
                           <option value="retroachievements" disabled>
                             RetroAchievements
@@ -10369,6 +10445,7 @@
               "gog",
               "gog-official",
               "xbox-pc",
+              "xbox-console",
               "retroachievements",
               "xenia",
               "rpcs3",
@@ -11286,6 +11363,7 @@
         }
         await syncSteamOfficialAccountDropdown(getCachedPreferences());
         await syncXboxPcStatus();
+        await syncXboxConsoleStatus();
         await syncRetroAchievementsStatus();
         if (appLanguageSelect) appLanguageSelect.value = uiLanguage;
         refreshAppThemeText();
@@ -14796,6 +14874,38 @@
         }
       }
 
+      let __xboxConsoleStatusSyncActive = false;
+
+      async function syncXboxConsoleStatus() {
+        if (__xboxConsoleStatusSyncActive) return null;
+        __xboxConsoleStatusSyncActive = true;
+        try {
+          const statusEl = document.getElementById(
+            "settings-xboxConsoleStatus",
+          );
+          const importBtn = document.getElementById(
+            "settings-xboxConsoleImportBtn",
+          );
+          if (!statusEl || !window.api?.getXboxConsoleStatus) return null;
+          const status = await window.api.getXboxConsoleStatus();
+          if (status?.connected) {
+            const account =
+              String(status.gamertag || "").trim() ||
+              String(status.xuid || "").trim();
+            statusEl.textContent = `Connected to Xbox Network: ${account}`;
+          } else if (status?.configured) {
+            statusEl.textContent =
+              "Microsoft/Xbox tokens could not be refreshed.";
+          } else {
+            statusEl.textContent = "Not connected. Connect Xbox above first.";
+          }
+          if (importBtn) importBtn.disabled = !status?.connected;
+          return status;
+        } finally {
+          __xboxConsoleStatusSyncActive = false;
+        }
+      }
+
       let __retroAchievementsStatusSyncActive = false;
 
       async function syncRetroAchievementsStatus() {
@@ -14972,6 +15082,7 @@
         await syncSteamOfficialAccountDropdown(prefs);
         await syncEpicOfficialAccountStatus();
         await syncXboxPcStatus();
+        await syncXboxConsoleStatus();
         await syncRetroAchievementsStatus();
         applyShowBlacklistPreference(prefs?.showBlacklistedGames);
         await syncBlacklistList();
@@ -15839,7 +15950,11 @@
             xboxPcImportBtn.addEventListener("click", async () => {
               xboxPcImportBtn.disabled = true;
               try {
-                const result = await window.api.importXboxPcLibrary();
+                const skipConsoleDuplicates =
+                  document.getElementById("settings-xboxPcSkipConsoleDuplicates")?.checked ?? true;
+                const result = await window.api.importXboxPcLibrary({
+                  skipConsoleDuplicates,
+                });
                 showNotification(
                   result?.success
                     ? tUiFmt(
@@ -15876,6 +15991,43 @@
                 );
               }
               await syncXboxPcStatus();
+            });
+          }
+
+          const xboxConsoleImportBtn = document.getElementById(
+            "settings-xboxConsoleImportBtn",
+          );
+          if (xboxConsoleImportBtn && !xboxConsoleImportBtn.dataset.bound) {
+            xboxConsoleImportBtn.dataset.bound = "1";
+            xboxConsoleImportBtn.addEventListener("click", async () => {
+              xboxConsoleImportBtn.disabled = true;
+              try {
+                const filter =
+                  document.getElementById("settings-xboxConsoleFilterSelect")?.value || "all";
+                const skipPcDuplicates =
+                  document.getElementById("settings-xboxConsoleSkipPcDuplicates")?.checked ?? true;
+                const result = await window.api.importXboxConsoleLibrary({
+                  filter,
+                  skipPcDuplicates,
+                });
+                showNotification(
+                  result?.success
+                    ? `Xbox Console import complete. Created ${Number(result.created) || 0}, updated ${Number(result.updated) || 0}, skipped ${Number(result.skipped) || 0}, failed ${Number(result.failed) || 0}.`
+                    : "Xbox Console library import failed.",
+                  result?.success ? "#4CAF50" : "#f44336",
+                );
+                if (result?.success) {
+                  if (typeof reloadConfigsDropdown === "function") {
+                    await reloadConfigsDropdown(true).catch(() => {});
+                  }
+                  if (typeof window.refreshFoldersList === "function") {
+                    window.refreshFoldersList();
+                  }
+                }
+              } catch (error) {
+                showNotification("Xbox Console library import failed.", "#f44336");
+              }
+              await syncXboxConsoleStatus();
             });
           }
 
@@ -17533,6 +17685,7 @@
           gog: "GOG",
           "gog-official": "GOG Official",
           "xbox-pc": "Xbox PC",
+          "xbox-console": "Xbox Console",
           retroachievements: "RetroAchievements",
           xenia: "Xenia",
           rpcs3: "RPCS3",
@@ -23734,6 +23887,8 @@
               return "GOG Official";
             case "xbox-pc":
               return "Xbox PC";
+            case "xbox-console":
+              return "Xbox Console";
             case "retroachievements":
               return "RetroAchievements";
             case "xenia":

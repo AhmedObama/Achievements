@@ -8,6 +8,7 @@ const ACCOUNT_SCOPED_PLATFORMS = new Set([
   "steam-official",
   "ubisoft-official",
   "xbox-pc",
+  "xbox-console",
 ]);
 
 function normalizeSummaryProgress(raw = null) {

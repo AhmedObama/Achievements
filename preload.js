@@ -653,7 +653,11 @@ contextBridge.exposeInMainWorld("api", {
   getXboxPcStatus: () => ipcRenderer.invoke("xbox-pc:status"),
   connectXboxPc: () => ipcRenderer.invoke("xbox-pc:connect"),
   disconnectXboxPc: () => ipcRenderer.invoke("xbox-pc:disconnect"),
-  importXboxPcLibrary: () => ipcRenderer.invoke("xbox-pc:import-library"),
+  importXboxPcLibrary: (options) =>
+    ipcRenderer.invoke("xbox-pc:import-library", options),
+  getXboxConsoleStatus: () => ipcRenderer.invoke("xbox-console:status"),
+  importXboxConsoleLibrary: (options) =>
+    ipcRenderer.invoke("xbox-console:import-library", options),
   getRetroAchievementsStatus: () =>
     ipcRenderer.invoke("retroachievements:status"),
   connectRetroAchievements: (credentials) =>
@@ -902,6 +906,8 @@ contextBridge.exposeInMainWorld("electron", {
         "xbox-pc:connect",
         "xbox-pc:disconnect",
         "xbox-pc:import-library",
+        "xbox-console:status",
+        "xbox-console:import-library",
         "retroachievements:status",
         "retroachievements:connect",
         "retroachievements:disconnect",

@@ -927,6 +927,11 @@ function normalizeDeviceNames(title = {}) {
     ...(Array.isArray(title?.deviceTypes) ? title.deviceTypes : []),
     title?.deviceType,
     title?.platform,
+    title?.titleHistory?.lastPlayedDevice,
+    title?.titleHistory?.currentDevice,
+    title?.titleHistory?.device,
+    title?.lastPlayedDevice,
+    title?.currentDevice,
   ];
   return devices
     .map((entry) =>
@@ -1380,7 +1385,7 @@ async function writeXboxPcSchema(schemaDir, titleId, achievements, options = {})
   return { schema, snapshot };
 }
 
-function indexExistingXboxConfigs(configsDir) {
+function indexExistingXboxConfigs(configsDir, platform = XBOX_PC_PLATFORM) {
   const byTitleId = new Map();
   let files = [];
   try {
@@ -1394,11 +1399,12 @@ function indexExistingXboxConfigs(configsDir) {
     try {
       const filePath = path.join(configsDir, file);
       const config = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      if (String(config?.platform || "").toLowerCase() !== XBOX_PC_PLATFORM) {
+      const configPlatform = String(config?.platform || "").toLowerCase();
+      if (platform && platform !== "all" && configPlatform !== platform.toLowerCase()) {
         continue;
       }
       const titleId = normalizeTitleId(config?.xbox_title_id || config?.appid);
-      if (titleId) byTitleId.set(titleId, { filePath, config });
+      if (titleId) byTitleId.set(titleId, { filePath, config, platform: configPlatform });
     } catch {}
   }
   return byTitleId;
@@ -1467,7 +1473,8 @@ async function importXboxPcLibrary(configsDir, options = {}) {
     });
   }
   const pcTitles = [...pcTitleMap.values()];
-  const existing = indexExistingXboxConfigs(configsDir);
+  const existing = indexExistingXboxConfigs(configsDir, XBOX_PC_PLATFORM);
+  const existingConsole = indexExistingXboxConfigs(configsDir, "xbox-console");
   const result = {
     provider: "Microsoft / Xbox Network",
     account,
@@ -1477,6 +1484,7 @@ async function importXboxPcLibrary(configsDir, options = {}) {
     created: 0,
     updated: 0,
     skipped: 0,
+    duplicateSkipped: 0,
     blacklistedSkipped: 0,
     failed: 0,
     imported: [],
@@ -1502,6 +1510,15 @@ async function importXboxPcLibrary(configsDir, options = {}) {
     });
     if (!titleId) {
       result.skipped += 1;
+      continue;
+    }
+    if (options.skipConsoleDuplicates !== false && existingConsole.has(titleId)) {
+      result.skipped += 1;
+      result.duplicateSkipped += 1;
+      xboxPcLogger.info("xbox-pc:import-title-skipped-console-duplicate", {
+        titleId,
+        title: titleName,
+      });
       continue;
     }
     if (isXboxPcTitleBlacklisted(titleId, options)) {
@@ -1690,6 +1707,7 @@ module.exports = {
   clearXboxDirectAuth,
   completeXboxDirectAuthentication,
   discoverXboxPcInstallations,
+  downloadImage,
   ensureXboxDirectSession,
   extractXboxDirectAuthResult,
   fetchXboxTitleAchievements,
@@ -1700,17 +1718,22 @@ module.exports = {
   getXboxPcAuthErrorInfo,
   getXboxPcStatus,
   importXboxPcLibrary,
+  indexExistingXboxConfigs,
   isXboxPcTitleBlacklisted,
   isWindowsPcTitle,
   loadXboxDirectAuth,
+  normalizeDeviceNames,
   normalizeXboxClientId,
+  normalizeXuid,
   normalizeTitleId,
   normalizeMicrosoftGameTitleId,
   normalizeXboxAchievement,
   normalizeXboxSchemaLanguages,
   parseMicrosoftGameConfig,
   parseGamingRootMarker,
+  reserveConfigPath,
   resolveXboxTitleArtwork,
   saveXboxDirectAuth,
   syncXboxPcAchievements,
+  writeXboxPcSchema,
 };
