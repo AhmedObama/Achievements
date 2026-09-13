@@ -1249,8 +1249,35 @@ async function fetchXboxAchievementRarityPercentages(
   return buildXboxAchievementRarityMap(achievements);
 }
 
+function optimizeXboxImageUrl(url, options = {}) {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (!/images-eds(?:-ssl)?\.xboxlive\.com/i.test(trimmed)) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.searchParams.has("w") && options.width) {
+      parsed.searchParams.set("w", String(options.width));
+    }
+    if (!parsed.searchParams.has("h") && options.height) {
+      parsed.searchParams.set("h", String(options.height));
+    }
+    if (!parsed.searchParams.has("format") && options.format) {
+      parsed.searchParams.set("format", options.format);
+    }
+    return parsed.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 async function downloadImage(url, outputPath, timeoutMs, options = {}) {
-  if (!/^https?:\/\//i.test(String(url || ""))) return "";
+  const imageOptions = options.imageOptions || {
+    width: 128,
+    height: 128,
+    format: "png",
+  };
+  const targetUrl = optimizeXboxImageUrl(url, imageOptions);
+  if (!/^https?:\/\//i.test(String(targetUrl || ""))) return "";
   try {
     if (
       options.overwrite !== true &&
@@ -1260,7 +1287,7 @@ async function downloadImage(url, outputPath, timeoutMs, options = {}) {
       return outputPath;
     }
   } catch {}
-  const response = await axios.get(url, {
+  const response = await axios.get(targetUrl, {
     timeout: Math.max(3000, Number(timeoutMs) || 15000),
     responseType: "arraybuffer",
     validateStatus: (status) => status >= 200 && status < 500,
@@ -1573,7 +1600,10 @@ async function importXboxPcLibrary(configsDir, options = {}) {
               artwork.coverUrl,
               coverPath,
               options.timeoutMs,
-              { overwrite: previousSources.coverUrl !== artwork.coverUrl },
+              {
+                overwrite: previousSources.coverUrl !== artwork.coverUrl,
+                imageOptions: { width: 300, height: 450, format: "jpg" },
+              },
             );
             if (savedCover) savedSources.coverUrl = artwork.coverUrl;
           }
@@ -1589,7 +1619,10 @@ async function importXboxPcLibrary(configsDir, options = {}) {
               artwork.headerUrl,
               headerPath,
               options.timeoutMs,
-              { overwrite: previousSources.headerUrl !== artwork.headerUrl },
+              {
+                overwrite: previousSources.headerUrl !== artwork.headerUrl,
+                imageOptions: { width: 640, height: 360, format: "jpg" },
+              },
             );
             if (savedHeader) savedSources.headerUrl = artwork.headerUrl;
           }
@@ -1729,6 +1762,7 @@ module.exports = {
   normalizeMicrosoftGameTitleId,
   normalizeXboxAchievement,
   normalizeXboxSchemaLanguages,
+  optimizeXboxImageUrl,
   parseMicrosoftGameConfig,
   parseGamingRootMarker,
   reserveConfigPath,

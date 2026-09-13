@@ -297,7 +297,10 @@ async function importXboxConsoleLibrary(configsDir, options = {}) {
               artwork.coverUrl,
               coverPath,
               options.timeoutMs,
-              { overwrite: previousSources.coverUrl !== artwork.coverUrl },
+              {
+                overwrite: previousSources.coverUrl !== artwork.coverUrl,
+                imageOptions: { width: 300, height: 450, format: "jpg" },
+              },
             );
             if (savedCover) savedSources.coverUrl = artwork.coverUrl;
           }
@@ -313,7 +316,10 @@ async function importXboxConsoleLibrary(configsDir, options = {}) {
               artwork.headerUrl,
               headerPath,
               options.timeoutMs,
-              { overwrite: previousSources.headerUrl !== artwork.headerUrl },
+              {
+                overwrite: previousSources.headerUrl !== artwork.headerUrl,
+                imageOptions: { width: 640, height: 360, format: "jpg" },
+              },
             );
             if (savedHeader) savedSources.headerUrl = artwork.headerUrl;
           }
