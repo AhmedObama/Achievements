@@ -12,6 +12,7 @@ const VALID_PLATFORMS = new Set([
   "gog",
   "gog-official",
   "xbox-pc",
+  "psn",
   "retroachievements",
   "xenia",
   "rpcs3",
@@ -58,6 +59,9 @@ function sanitizeAppIdForPlatform(value, platform) {
   if (normalized === "xbox-pc") {
     return sanitizeXboxPcTitleId(raw);
   }
+  if (normalized === "psn") {
+    return /^[A-Za-z0-9_:-]{3,64}$/.test(raw) ? raw : "";
+  }
   if (normalized === "retroachievements") {
     return sanitizeRetroAchievementsGameId(raw);
   }
@@ -101,6 +105,9 @@ function inferOfficialPlatformFromMarkers(config = {}) {
   }
   if (configPath.includes(`${schemaNeedle}xbox-pc${path.sep}`)) {
     return "xbox-pc";
+  }
+  if (configPath.includes(`${schemaNeedle}psn${path.sep}`)) {
+    return "psn";
   }
   if (configPath.includes(`${schemaNeedle}retroachievements${path.sep}`)) {
     return "retroachievements";
@@ -155,6 +162,13 @@ function inferOfficialPlatformFromMarkers(config = {}) {
     config?.xbox_aumid
   ) {
     return "xbox-pc";
+  }
+  if (
+    String(config?.achievement_source?.provider || "").toLowerCase() === "psn" ||
+    config?.platform === "psn" ||
+    config?.psn_communication_id
+  ) {
+    return "psn";
   }
   if (
     config?.retroachievements_game_id ||
@@ -233,6 +247,7 @@ function inferPlatformAndSteamId({ config, mapping }) {
     platform === "gog" ||
     platform === "gog-official" ||
     platform === "xbox-pc" ||
+    platform === "psn" ||
     platform === "retroachievements" ||
     platform === "markerpatch" ||
     platform === "madnesspatch" ||
@@ -401,6 +416,12 @@ function migrateSchemaStorage({ configsDir, platformIndex, logger = console }) {
       !platforms?.has("uplay") &&
       !platforms?.has("gog") &&
       !platforms?.has("epic");
+    const prefersPsn =
+      platforms?.has("psn") &&
+      !platforms?.has("steam") &&
+      !platforms?.has("uplay") &&
+      !platforms?.has("gog") &&
+      !platforms?.has("epic");
     const prefersRetroAchievements =
       platforms?.has("retroachievements") &&
       !platforms?.has("steam") &&
@@ -433,6 +454,8 @@ function migrateSchemaStorage({ configsDir, platformIndex, logger = console }) {
         ? "ea-official"
       : prefersEpicOfficial
         ? "epic-official"
+      : prefersPsn
+        ? "psn"
       : prefersXboxPc
         ? "xbox-pc"
       : prefersRetroAchievements
@@ -502,6 +525,8 @@ function migrateSchemaStorage({ configsDir, platformIndex, logger = console }) {
                 ? "gog-official"
               : platform === "xbox-pc"
                 ? "xbox-pc"
+              : platform === "psn"
+                ? "psn"
               : platform === "retroachievements"
                 ? "retroachievements"
               : platform === "xenia"

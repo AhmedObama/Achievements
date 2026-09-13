@@ -247,6 +247,9 @@ const epicOfficialRecentUnlockNotificationState = new Map();
 const xboxPcLoadSyncInflight = new Map();
 const xboxPcRecentLoadSync = new Map();
 const XBOX_PC_RECENT_SYNC_MAX_ENTRIES = 500;
+const psnLoadSyncInflight = new Map();
+const psnRecentLoadSync = new Map();
+const PSN_RECENT_SYNC_MAX_ENTRIES = 500;
 const EPIC_OFFICIAL_LOAD_SYNC_DEDUPE_MS = 2000;
 const EPIC_OFFICIAL_RECENT_SYNC_TTL_MS = 5 * 60 * 1000;
 const EPIC_OFFICIAL_PASSIVE_SYNC_TTL_MS = 10 * 60 * 1000;
@@ -300,6 +303,9 @@ const epicOfficialLogger = createLogger("epic-official", {
 });
 const xboxPcLogger = createLogger("xbox-pc", {
   level: process.env.XBOX_PC_LOG_LEVEL || "info",
+});
+const psnLogger = createLogger("psn", {
+  level: process.env.PSN_LOG_LEVEL || "info",
 });
 const retroAchievementsLogger = createLogger("retroachievements", {
   level: process.env.RETROACHIEVEMENTS_LOG_LEVEL || "info",
@@ -8903,6 +8909,204 @@ ipcMain.handle("xbox-pc:import-library", async () => {
   }
 });
 
+async function waitForPsnAuthCookie(parentWindow) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let authWindow = null;
+    let checkInterval = null;
+
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (checkInterval) {
+        clearInterval(checkInterval);
+        checkInterval = null;
+      }
+      if (authWindow && !authWindow.isDestroyed()) {
+        authWindow.destroy();
+      }
+      fn(value);
+    };
+
+    try {
+      const ses = session.fromPartition("persist:psn-auth");
+      authWindow = new BrowserWindow({
+        width: 550,
+        height: 700,
+        parent: parentWindow || undefined,
+        modal: false,
+        show: true,
+        title: "Sign in to PlayStation Network",
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: "persist:psn-auth",
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        },
+      });
+
+      const checkForNpsso = async () => {
+        try {
+          const cookies = await ses.cookies.get({ name: "npsso" });
+          if (cookies && cookies.length > 0 && cookies[0].value) {
+            settle(resolve, cookies[0].value);
+          }
+        } catch {}
+      };
+
+      checkInterval = setInterval(checkForNpsso, 800);
+
+      authWindow.webContents.on("did-navigate", checkForNpsso);
+      authWindow.webContents.on("did-finish-load", checkForNpsso);
+
+      authWindow.on("closed", () => {
+        authWindow = null;
+        if (!settled) reject(new Error("psn-auth-cancelled"));
+      });
+
+      authWindow
+        .loadURL(
+          "https://ca.account.sony.com/api/authz/v3/oauth/authorize?access_type=offline&client_id=09515159-7237-4370-9b40-3806e67c0891&redirect_uri=com.scee.psxandroid.scecompcall://redirect&response_type=code&scope=psn:mobile.v2.core%20psn:clientapp",
+        )
+        .catch((err) => settle(reject, err));
+    } catch (err) {
+      settle(reject, err);
+    }
+  });
+}
+
+ipcMain.handle("psn:status", async () => {
+  const status = await getPsnStatus({
+    userDataDir: app.getPath("userData"),
+  });
+  return { success: status.authenticated === true, ...status };
+});
+
+ipcMain.handle("psn:connect", async (event) => {
+  try {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const npsso = await waitForPsnAuthCookie(parentWindow);
+    const session = await exchangeNpssoForAuthSession(npsso, {
+      userDataDir: app.getPath("userData"),
+    });
+    return {
+      success: true,
+      authenticated: true,
+      onlineId: session.onlineId,
+      accountId: session.accountId,
+      avatarUrl: session.avatarUrl,
+    };
+  } catch (error) {
+    psnLogger.warn("psn:connect-failed", {
+      error: error?.message || String(error),
+    });
+    return {
+      success: false,
+      error: error?.message || "PlayStation Network login failed.",
+    };
+  }
+});
+
+ipcMain.handle("psn:connect-manual", async (_event, npsso) => {
+  try {
+    const session = await exchangeNpssoForAuthSession(npsso, {
+      userDataDir: app.getPath("userData"),
+    });
+    return {
+      success: true,
+      authenticated: true,
+      onlineId: session.onlineId,
+      accountId: session.accountId,
+      avatarUrl: session.avatarUrl,
+    };
+  } catch (error) {
+    psnLogger.warn("psn:connect-manual-failed", {
+      error: error?.message || String(error),
+    });
+    return {
+      success: false,
+      error: error?.message || "Invalid NPSSO token.",
+    };
+  }
+});
+
+ipcMain.handle("psn:disconnect", async () => {
+  try {
+    await clearPsnAuth(app.getPath("userData"));
+    return { success: true, authenticated: false };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle("psn:import-library", async (_event, options = {}) => {
+  let progressJob = null;
+  try {
+    progressJob = createGenerationProgressJob({
+      kind: "config-generate",
+      scope: "batch",
+      status: "running",
+      itemName: "PlayStation Network",
+      appid: "",
+      phase: "fetchingLibrary",
+      detail: "Fetching PlayStation trophy titles",
+      current: 0,
+      total: 0,
+      percent: 5,
+    });
+    const result = await importPsnLibrary(configsDir, {
+      userDataDir: app.getPath("userData"),
+      schemaRootDir: SCHEMA_ROOT_PATH,
+      filter: options?.filter || "all",
+      onProgress: (progress = {}) => {
+        progressJob?.update({
+          itemName: progress.title || "PlayStation Network",
+          appid: progress.npCommunicationId || "",
+          phase: "importingLibrary",
+          detail: progress.title || "",
+          current: Number(progress.index) || 0,
+          total: Number(progress.total) || 0,
+          percent: clampGenerationPercent(
+            progress.total > 0 ? (progress.index / progress.total) * 100 : 5,
+            5,
+          ),
+        });
+      },
+    });
+    for (const entry of result.imported || []) {
+      savePreviousAchievements(entry.name, entry.snapshot || {}, "psn");
+    }
+    notifyConfigsChanged();
+    progressJob?.succeed({
+      phase: "completed",
+      detail: "PlayStation Network library imported",
+      current: result.totalTitles || 0,
+      total: result.totalTitles || 0,
+      percent: 100,
+    });
+    return {
+      success: true,
+      message:
+        `PlayStation import complete. Created ${result.created}, updated ` +
+        `${result.updated}, skipped ${result.skipped}, failed ${result.failed}.`,
+      ...result,
+    };
+  } catch (error) {
+    progressJob?.fail({
+      phase: "failed",
+      detail: error?.message || "PlayStation Network import failed",
+    });
+    psnLogger.warn("psn:import-library-failed", {
+      error: error?.message || String(error),
+    });
+    return {
+      success: false,
+      message: error?.message || "PlayStation Network import failed.",
+    };
+  }
+});
+
 ipcMain.handle("retroachievements:status", async () => {
   try {
     const status = await getRetroAchievementsStatus({
@@ -11007,6 +11211,101 @@ ipcMain.handle(
           xboxPcLogger.warn("xbox-pc:load-sync-failed", {
             configName: safeName,
             titleId: titleId || null,
+            error: error?.message || String(error),
+          });
+          return {
+            achievements: await applyManualOverridesForReturn(
+              cached || {},
+              null,
+              cached || {},
+            ),
+            save_path: config.save_path || "",
+            error: error?.message || String(error),
+          };
+        }
+      }
+
+      if (normalizedPlatform === "psn") {
+        const cached = await getCacheFallback();
+        const commId = String(
+          config?.psn_communication_id || config?.appid || "",
+        ).trim();
+        const syncKey = `${commId}`;
+        if (commId && isAppIdBlacklisted(commId, "psn")) {
+          return {
+            achievements: await applyManualOverridesForReturn(
+              cached || {},
+              null,
+              cached || {},
+            ),
+            save_path: config.save_path || "",
+          };
+        }
+        const lastSync = Number(psnRecentLoadSync.get(syncKey) || 0);
+        const shouldSync =
+          Boolean(commId) &&
+          (safeName === sanitizeOptionalConfigName(selectedConfig) ||
+            !Object.keys(cached || {}).length) &&
+          Date.now() - lastSync >= 30000;
+        if (!shouldSync) {
+          return {
+            achievements: await applyManualOverridesForReturn(
+              cached || {},
+              null,
+              cached || {},
+            ),
+            save_path: config.save_path || "",
+          };
+        }
+        let job = psnLoadSyncInflight.get(syncKey);
+        if (!job) {
+          job = syncPsnAchievements(config, {
+            userDataDir: app.getPath("userData"),
+            timeoutMs: 15000,
+          }).finally(() => {
+            psnLoadSyncInflight.delete(syncKey);
+          });
+          psnLoadSyncInflight.set(syncKey, job);
+        }
+        try {
+          const synced = await job;
+          const snapshot = mergeEarnedTimeFromCached(
+            synced?.snapshot || {},
+            cached || {},
+          );
+          savePreviousAchievements(safeName, snapshot, "psn");
+          const recentMap = psnRecentLoadSync;
+          if (recentMap.size >= PSN_RECENT_SYNC_MAX_ENTRIES) {
+            const firstKey = recentMap.keys().next().value;
+            if (firstKey !== undefined) recentMap.delete(firstKey);
+          }
+          recentMap.set(syncKey, Date.now());
+          const statePath = path.join(
+            String(config.save_path || ""),
+            "achievements.json",
+          );
+          if (config.save_path) {
+            try {
+              writeJsonAtomicSync(statePath, snapshot);
+            } catch (error) {
+              psnLogger.warn("psn:state-write-failed", {
+                configName: safeName,
+                error: error?.message || String(error),
+              });
+            }
+          }
+          return {
+            achievements: await applyManualOverridesForReturn(
+              snapshot,
+              null,
+              snapshot,
+            ),
+            save_path: config.save_path || "",
+          };
+        } catch (error) {
+          psnLogger.warn("psn:load-sync-failed", {
+            configName: safeName,
+            commId: commId || null,
             error: error?.message || String(error),
           });
           return {
@@ -27242,6 +27541,14 @@ const {
   syncXboxPcAchievements,
 } = require("./utils/xbox-pc");
 const {
+  PSN_PLATFORM,
+  clearPsnAuth,
+  getPsnStatus,
+  exchangeNpssoForAuthSession,
+  importPsnLibrary,
+  syncPsnAchievements,
+} = require("./utils/psn");
+const {
   RETROACHIEVEMENTS_RARITY_SOURCE,
   clearRetroAchievementsAuth,
   connectRetroAchievements,
@@ -28130,6 +28437,7 @@ function applyConfigPlatformDefaults(payload = {}) {
     normalizedPlatform === "ubisoft-official" ||
     normalizedPlatform === "ea-official" ||
     normalizedPlatform === "xbox-pc" ||
+    normalizedPlatform === "psn" ||
     normalizedPlatform === "retroachievements" ||
     normalizedPlatform === "xlivelessness"
   ) {
@@ -28183,6 +28491,7 @@ const SCHEMA_PLATFORM_DIRS = [
   "epic",
   "epic-official",
   "xbox-pc",
+  "psn",
   "retroachievements",
   "xenia",
   "rpcs3",
@@ -28203,6 +28512,7 @@ function normalizeStoragePlatform(platform) {
   if (normalized === "epic") return "epic";
   if (normalized === "epic-official") return "epic-official";
   if (normalized === "xbox-pc") return "xbox-pc";
+  if (normalized === "psn") return "psn";
   if (normalized === "retroachievements") return "retroachievements";
   if (normalized === "xenia") return "xenia";
   if (normalized === "rpcs3") return "rpcs3";

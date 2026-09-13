@@ -654,6 +654,12 @@ contextBridge.exposeInMainWorld("api", {
   connectXboxPc: () => ipcRenderer.invoke("xbox-pc:connect"),
   disconnectXboxPc: () => ipcRenderer.invoke("xbox-pc:disconnect"),
   importXboxPcLibrary: () => ipcRenderer.invoke("xbox-pc:import-library"),
+  getPsnStatus: () => ipcRenderer.invoke("psn:status"),
+  connectPsn: () => ipcRenderer.invoke("psn:connect"),
+  connectPsnManual: (npsso) => ipcRenderer.invoke("psn:connect-manual", npsso),
+  disconnectPsn: () => ipcRenderer.invoke("psn:disconnect"),
+  importPsnLibrary: (options) =>
+    ipcRenderer.invoke("psn:import-library", options),
   getRetroAchievementsStatus: () =>
     ipcRenderer.invoke("retroachievements:status"),
   connectRetroAchievements: (credentials) =>
@@ -902,6 +908,11 @@ contextBridge.exposeInMainWorld("electron", {
         "xbox-pc:connect",
         "xbox-pc:disconnect",
         "xbox-pc:import-library",
+        "psn:status",
+        "psn:connect",
+        "psn:connect-manual",
+        "psn:disconnect",
+        "psn:import-library",
         "retroachievements:status",
         "retroachievements:connect",
         "retroachievements:disconnect",

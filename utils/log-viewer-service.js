@@ -21,6 +21,8 @@ const KNOWN_LOG_SOURCES = Object.freeze({
   rarity: "Achievement Rarity",
   "epic-official": "Epic Games",
   "xbox-pc": "Xbox PC",
+  "xbox-console": "Xbox Console",
+  psn: "PlayStation Network",
   retroachievements: "RetroAchievements",
   controller: "Controller",
   updates: "Application Updates",

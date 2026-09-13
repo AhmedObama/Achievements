@@ -2045,6 +2045,82 @@
                 </div>
                 <hr style="margin: 18px 0 14px" />
                 <div class="settings-section" style="margin-bottom: 5px">
+                  <h4 id="settings-psnTitle">
+                    PlayStation Network (PSN)
+                  </h4>
+                  <div
+                    id="settings-psnStatus"
+                    class="hint"
+                    style="margin-top: 6px; display: flex; align-items: center; gap: 8px;"
+                  >
+                    <img id="settings-psnAvatar" style="width: 28px; height: 28px; border-radius: 50%; display: none;" src="" alt="" />
+                    <span id="settings-psnStatusText">Not connected.</span>
+                  </div>
+                  <div class="settings-control" style="gap: 8px; margin-top: 8px;">
+                    <button
+                      type="button"
+                      id="settings-psnConnectBtn"
+                    >
+                      Sign in with PlayStation
+                    </button>
+                    <button
+                      type="button"
+                      id="settings-psnDisconnectBtn"
+                      style="display: none;"
+                    >
+                      Disconnect
+                    </button>
+                    <button
+                      type="button"
+                      id="settings-psnImportBtn"
+                      disabled
+                    >
+                      Import PlayStation Library
+                    </button>
+                  </div>
+                  <div style="margin-top: 10px;">
+                    <details style="font-size: 12px; color: var(--text-muted, #888);">
+                      <summary style="cursor: pointer; user-select: none;">Alternative: Manual NPSSO Login</summary>
+                      <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <input
+                          type="password"
+                          id="settings-psnNpssoInput"
+                          placeholder="Paste 64-character NPSSO token"
+                          style="flex: 1; min-width: 250px; padding: 6px 10px; font-size: 12px; border-radius: 4px; background: var(--bg-card, #2b2b2b); color: inherit; border: 1px solid var(--border-color, #444);"
+                        />
+                        <button
+                          type="button"
+                          id="settings-psnManualConnectBtn"
+                          style="padding: 6px 12px; font-size: 12px;"
+                        >
+                          Save NPSSO
+                        </button>
+                      </div>
+                      <div class="hint" style="margin-top: 4px; font-size: 11px;">
+                        To obtain your NPSSO, sign in at <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" style="color: var(--color-primary, #3b82f6);">ca.account.sony.com/api/v1/ssocookie</a> and copy the 64-character token.
+                      </div>
+                    </details>
+                  </div>
+                  <div class="settings-control" style="gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+                    <label for="settings-psnFilterSelect" class="hint" style="margin: 0; font-size: 12px;">Platform Filter:</label>
+                    <select id="settings-psnFilterSelect" style="padding: 4px 8px; font-size: 12px; border-radius: 4px; background: var(--bg-card, #2b2b2b); color: inherit; border: 1px solid var(--border-color, #444);">
+                      <option value="all">All PlayStation (PS5, PS4, PS3, PS Vita)</option>
+                      <option value="ps5">PlayStation 5 Only</option>
+                      <option value="ps4">PlayStation 4 Only</option>
+                      <option value="ps3_vita">PlayStation 3 & PS Vita Only</option>
+                    </select>
+                  </div>
+                  <div
+                    id="settings-psnHint"
+                    class="hint"
+                    style="margin-top: 6px; margin-bottom: 30px"
+                  >
+                    Connect your PlayStation Network account to import your PS5, PS4, PS3,
+                    and PS Vita trophy library with Bronze, Silver, Gold, and Platinum badges.
+                  </div>
+                </div>
+                <hr style="margin: 18px 0 14px" />
+                <div class="settings-section" style="margin-bottom: 5px">
                   <h4
                     id="settings-retroAchievementsTitle"
                     data-i18n="settings.retroAchievements.title"
@@ -5020,6 +5096,9 @@
                           </option>
                           <option value="xbox-pc" disabled>
                             Xbox PC (Microsoft / Xbox Network)
+                          </option>
+                          <option value="psn" disabled>
+                            PlayStation Network (PSN)
                           </option>
                           <option value="retroachievements" disabled>
                             RetroAchievements
@@ -10369,6 +10448,7 @@
               "gog",
               "gog-official",
               "xbox-pc",
+              "psn",
               "retroachievements",
               "xenia",
               "rpcs3",
@@ -11286,6 +11366,7 @@
         }
         await syncSteamOfficialAccountDropdown(getCachedPreferences());
         await syncXboxPcStatus();
+        await syncPsnStatus();
         await syncRetroAchievementsStatus();
         if (appLanguageSelect) appLanguageSelect.value = uiLanguage;
         refreshAppThemeText();
@@ -14796,6 +14877,46 @@
         }
       }
 
+      let __psnStatusSyncActive = false;
+
+      async function syncPsnStatus() {
+        if (__psnStatusSyncActive) return null;
+        __psnStatusSyncActive = true;
+        try {
+          const statusTextEl = document.getElementById("settings-psnStatusText");
+          const avatarEl = document.getElementById("settings-psnAvatar");
+          const connectBtn = document.getElementById("settings-psnConnectBtn");
+          const disconnectBtn = document.getElementById("settings-psnDisconnectBtn");
+          const importBtn = document.getElementById("settings-psnImportBtn");
+
+          if (!statusTextEl || !window.api?.getPsnStatus) return null;
+          const status = await window.api.getPsnStatus();
+
+          if (status?.authenticated) {
+            statusTextEl.textContent = `Connected as ${status.onlineId || "PlayStation User"}`;
+            if (avatarEl) {
+              if (status.avatarUrl) {
+                avatarEl.src = status.avatarUrl;
+                avatarEl.style.display = "inline-block";
+              } else {
+                avatarEl.style.display = "none";
+              }
+            }
+            if (connectBtn) connectBtn.style.display = "none";
+            if (disconnectBtn) disconnectBtn.style.display = "inline-block";
+            if (importBtn) importBtn.disabled = false;
+          } else {
+            statusTextEl.textContent = "Not connected.";
+            if (avatarEl) avatarEl.style.display = "none";
+            if (connectBtn) connectBtn.style.display = "inline-block";
+            if (disconnectBtn) disconnectBtn.style.display = "none";
+            if (importBtn) importBtn.disabled = true;
+          }
+          return status;
+        } finally {
+          __psnStatusSyncActive = false;
+        }
+      }
       let __retroAchievementsStatusSyncActive = false;
 
       async function syncRetroAchievementsStatus() {
@@ -14972,6 +15093,7 @@
         await syncSteamOfficialAccountDropdown(prefs);
         await syncEpicOfficialAccountStatus();
         await syncXboxPcStatus();
+        await syncPsnStatus();
         await syncRetroAchievementsStatus();
         applyShowBlacklistPreference(prefs?.showBlacklistedGames);
         await syncBlacklistList();
@@ -15876,6 +15998,98 @@
                 );
               }
               await syncXboxPcStatus();
+            });
+          }
+
+          const psnConnectBtn = document.getElementById("settings-psnConnectBtn");
+          if (psnConnectBtn && !psnConnectBtn.dataset.bound) {
+            psnConnectBtn.dataset.bound = "1";
+            psnConnectBtn.addEventListener("click", async () => {
+              psnConnectBtn.disabled = true;
+              try {
+                const res = await window.api.connectPsn();
+                if (res?.success && res.authenticated) {
+                  showNotification(`Connected to PlayStation Network as ${res.onlineId}!`, "#4CAF50");
+                } else if (res?.error && res.error !== "psn-auth-cancelled") {
+                  showNotification(`PlayStation login failed: ${res.error}`, "#f44336");
+                }
+              } catch (err) {
+                if (err?.message !== "psn-auth-cancelled") {
+                  showNotification("PlayStation Network login failed.", "#f44336");
+                }
+              } finally {
+                psnConnectBtn.disabled = false;
+                await syncPsnStatus();
+              }
+            });
+          }
+
+          const psnManualConnectBtn = document.getElementById("settings-psnManualConnectBtn");
+          if (psnManualConnectBtn && !psnManualConnectBtn.dataset.bound) {
+            psnManualConnectBtn.dataset.bound = "1";
+            psnManualConnectBtn.addEventListener("click", async () => {
+              const input = document.getElementById("settings-psnNpssoInput");
+              const npsso = input?.value?.trim() || "";
+              if (!npsso) {
+                showNotification("Please enter a valid 64-character NPSSO token.", "#f44336");
+                return;
+              }
+              psnManualConnectBtn.disabled = true;
+              try {
+                const res = await window.api.connectPsnManual(npsso);
+                if (res?.success && res.authenticated) {
+                  showNotification(`Connected to PlayStation Network as ${res.onlineId}!`, "#4CAF50");
+                  if (input) input.value = "";
+                } else {
+                  showNotification(res?.error || "Failed to authenticate NPSSO token.", "#f44336");
+                }
+              } catch (err) {
+                showNotification("Failed to authenticate NPSSO token.", "#f44336");
+              } finally {
+                psnManualConnectBtn.disabled = false;
+                await syncPsnStatus();
+              }
+            });
+          }
+
+          const psnDisconnectBtn = document.getElementById("settings-psnDisconnectBtn");
+          if (psnDisconnectBtn && !psnDisconnectBtn.dataset.bound) {
+            psnDisconnectBtn.dataset.bound = "1";
+            psnDisconnectBtn.addEventListener("click", async () => {
+              await window.api.disconnectPsn();
+              showNotification("Disconnected from PlayStation Network.", "#4CAF50");
+              await syncPsnStatus();
+            });
+          }
+
+          const psnImportBtn = document.getElementById("settings-psnImportBtn");
+          if (psnImportBtn && !psnImportBtn.dataset.bound) {
+            psnImportBtn.dataset.bound = "1";
+            psnImportBtn.addEventListener("click", async () => {
+              psnImportBtn.disabled = true;
+              try {
+                const filter = document.getElementById("settings-psnFilterSelect")?.value || "all";
+                const result = await window.api.importPsnLibrary({ filter });
+                showNotification(
+                  result?.success
+                    ? `PlayStation import complete. Created ${Number(result.created) || 0}, updated ${Number(result.updated) || 0}, skipped ${Number(result.skipped) || 0}, failed ${Number(result.failed) || 0}.`
+                    : "PlayStation library import failed.",
+                  result?.success ? "#4CAF50" : "#f44336",
+                );
+                if (result?.success) {
+                  if (typeof reloadConfigsDropdown === "function") {
+                    await reloadConfigsDropdown(true).catch(() => {});
+                  }
+                  if (typeof window.refreshFoldersList === "function") {
+                    window.refreshFoldersList();
+                  }
+                }
+              } catch (error) {
+                showNotification("PlayStation library import failed.", "#f44336");
+              } finally {
+                psnImportBtn.disabled = false;
+                await syncPsnStatus();
+              }
             });
           }
 
@@ -17533,6 +17747,7 @@
           gog: "GOG",
           "gog-official": "GOG Official",
           "xbox-pc": "Xbox PC",
+          psn: "PlayStation Network",
           retroachievements: "RetroAchievements",
           xenia: "Xenia",
           rpcs3: "RPCS3",
@@ -23734,6 +23949,8 @@
               return "GOG Official";
             case "xbox-pc":
               return "Xbox PC";
+            case "psn":
+              return "PlayStation";
             case "retroachievements":
               return "RetroAchievements";
             case "xenia":
