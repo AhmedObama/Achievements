@@ -832,7 +832,13 @@ function mergeEarnedTimeFromCached(snapshot, cached) {
   return changed ? merged : snapshot;
 }
 
-function loadAchievementsFromSaveFile(saveDir, fallback = {}, options = {}) {
+function loadAchievementsFromSaveFile(rawSaveDir, fallback = {}, options = {}) {
+  let saveDir = String(rawSaveDir || "").trim();
+  try {
+    if (saveDir && fs.existsSync(saveDir) && fs.statSync(saveDir).isFile()) {
+      saveDir = path.dirname(saveDir);
+    }
+  } catch {}
   const {
     configMeta = null,
     selectedConfigPath = null,
@@ -1202,10 +1208,19 @@ function loadAchievementsFromSaveFile(saveDir, fallback = {}, options = {}) {
       }
 
       const hasOnlineFixStats = fs.existsSync(onlineFixStatsPath);
-      const stats = hasOnlineFixStats
+      const parsedStats = hasOnlineFixStats
         ? parseOnlineFixStatsIni(onlineFixStatsPath)
         : {};
-      if (stats === null) return fallback || {};
+      const isGenuineOnlineFix =
+        parsedStats !== null && typeof parsedStats === "object";
+      const stats = isGenuineOnlineFix ? parsedStats : {};
+      if (
+        hasOnlineFixStats &&
+        !isGenuineOnlineFix &&
+        !Object.keys(converted).length
+      ) {
+        return fallback || {};
+      }
 
       const schemaEntries = readAchievementSchemaArray(
         configMeta,
@@ -1216,7 +1231,8 @@ function loadAchievementsFromSaveFile(saveDir, fallback = {}, options = {}) {
         return Object.keys(converted).length ? converted : fallback || {};
       }
       return buildOnlineFixSnapshot(schemaEntries, converted, stats, fallback, {
-        statsAreAuthoritative: hasOnlineFixStats,
+        statsAreAuthoritative:
+          isGenuineOnlineFix && Object.keys(stats).length > 0,
       });
     } catch {
       return fallback || {};
