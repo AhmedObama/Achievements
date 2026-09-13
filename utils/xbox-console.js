@@ -91,8 +91,7 @@ function isXboxConsoleTitle(title, filter = "all") {
     /(?:^|[^a-z])(pc|windows|windowsonecore|win32)(?:$|[^a-z])/.test(d),
   );
 
-  // If title only has PC device tags and NO console device tags, it's strictly a PC title
-  if (hasPcDevice && !hasConsoleDevice) {
+  if (!hasConsoleDevice) {
     return false;
   }
 
